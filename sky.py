@@ -624,7 +624,6 @@ def scan_network_via_adb():
     try:
         output = subprocess.check_output(["adb", "shell", "dumpsys", "wifi"],
                                          stderr=subprocess.DEVNULL).decode()
-        # Look for IP/MAC pairs in wifi logs
         matches = re.findall(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*?([0-9a-fA-F:]{17})', output)
         for ip, mac in matches:
             mac = mac.lower()
@@ -633,6 +632,42 @@ def scan_network_via_adb():
             if mac not in seen_macs:
                 seen_macs.add(mac)
                 results.append({"ip": ip, "mac": mac})
+    except:
+        pass
+
+    # Method 4: arp -a (Classic command)
+    try:
+        output = subprocess.check_output(["adb", "shell", "arp", "-a"],
+                                         stderr=subprocess.DEVNULL).decode()
+        for line in output.splitlines():
+            ip_m = re.search(r'\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\)', line)
+            mac_m = re.search(r'at\s+([0-9a-fA-F:]{17})', line)
+            if ip_m and mac_m:
+                ip = ip_m.group(1)
+                mac = mac_m.group(1).lower()
+                if ip.endswith(".1") or ip.endswith(".255") or mac == "00:00:00:00:00:00":
+                    continue
+                if mac not in seen_macs:
+                    seen_macs.add(mac)
+                    results.append({"ip": ip, "mac": mac})
+    except:
+        pass
+
+    # Method 5: Interface specific scanning (wlan0)
+    try:
+        output = subprocess.check_output(["adb", "shell", "ip", "neigh", "show", "dev", "wlan0"],
+                                         stderr=subprocess.DEVNULL).decode()
+        for line in output.splitlines():
+            ip_m = re.search(r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+            mac_m = re.search(r'lladdr\s+([0-9a-fA-F:]{17})', line)
+            if ip_m and mac_m:
+                ip = ip_m.group(1)
+                mac = mac_m.group(1).lower()
+                if ip.endswith(".1") or ip.endswith(".255") or mac == "00:00:00:00:00:00":
+                    continue
+                if mac not in seen_macs:
+                    seen_macs.add(mac)
+                    results.append({"ip": ip, "mac": mac})
     except:
         pass
 
