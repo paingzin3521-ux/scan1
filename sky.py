@@ -568,14 +568,17 @@ def scan_network_via_adb():
 
     print(f"{YELLOW}[*] Scanning network ({subnet}.0/24)...{RESET}")
 
-    # Ping sweep to populate ARP table
+    # Ping sweep to populate ARP table (Increased efficiency)
     ips = [f"{subnet}.{i}" for i in range(1, 255)]
-    with ThreadPoolExecutor(max_workers=100) as ex:
-        list(ex.map(
-            lambda ip: subprocess.run(["adb", "shell", f"ping -c 1 -w 1 {ip}"],
-                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
-            ips
-        ))
+    print(f"{CYAN}[*] Sweeping subnet for active hosts...{RESET}")
+    
+    def fast_ping(ip):
+        # Using a very short timeout and sending only 1 packet
+        subprocess.run(["adb", "shell", f"ping -c 1 -W 1 {ip}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    with ThreadPoolExecutor(max_workers=120) as ex:
+        ex.map(fast_ping, ips)
 
     # Read ARP table from multiple sources
     results = []
@@ -586,34 +589,52 @@ def scan_network_via_adb():
         output = subprocess.check_output(["adb", "shell", "ip", "neigh", "show"],
                                          stderr=subprocess.DEVNULL).decode()
         for line in output.splitlines():
+            # Support both 'lladdr' and direct MAC formats
             ip_m = re.search(r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
-            mac_m = re.search(r'lladdr\s+([0-9a-fA-F:]{17})', line)
+            mac_m = re.search(r'([0-9a-fA-F:]{17})', line)
             if ip_m and mac_m:
                 ip = ip_m.group(1)
-                mac = mac_m.group(1).lower()
-                if ip.endswith(".1") or ip.endswith(".255") or mac in seen_macs:
+                mac = mac_m.group(0).lower()
+                if ip.endswith(".1") or ip.endswith(".255") or mac == "00:00:00:00:00:00":
                     continue
+                if mac not in seen_macs:
+                    seen_macs.add(mac)
+                    results.append({"ip": ip, "mac": mac})
+    except:
+        pass
+
+    # Method 2: /proc/net/arp (Robust fallback)
+    try:
+        output = subprocess.check_output(["adb", "shell", "cat", "/proc/net/arp"],
+                                         stderr=subprocess.DEVNULL).decode()
+        for line in output.splitlines()[1:]: 
+            parts = line.split()
+            if len(parts) >= 4:
+                ip = parts[0]
+                mac = parts[3].lower()
+                if mac == "00:00:00:00:00:00" or ip.endswith(".1") or ip.endswith(".255"):
+                    continue
+                if mac not in seen_macs:
+                    seen_macs.add(mac)
+                    results.append({"ip": ip, "mac": mac})
+    except:
+        pass
+
+    # Method 3: dumpsys wifi (Sometimes contains connected device info)
+    try:
+        output = subprocess.check_output(["adb", "shell", "dumpsys", "wifi"],
+                                         stderr=subprocess.DEVNULL).decode()
+        # Look for IP/MAC pairs in wifi logs
+        matches = re.findall(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*?([0-9a-fA-F:]{17})', output)
+        for ip, mac in matches:
+            mac = mac.lower()
+            if ip.endswith(".1") or ip.endswith(".255") or mac == "00:00:00:00:00:00":
+                continue
+            if mac not in seen_macs:
                 seen_macs.add(mac)
                 results.append({"ip": ip, "mac": mac})
     except:
         pass
-
-    # Method 2: /proc/net/arp (Fallback for older devices or different permissions)
-    if not results:
-        try:
-            output = subprocess.check_output(["adb", "shell", "cat", "/proc/net/arp"],
-                                             stderr=subprocess.DEVNULL).decode()
-            for line in output.splitlines()[1:]: # Skip header
-                parts = line.split()
-                if len(parts) >= 4:
-                    ip = parts[0]
-                    mac = parts[3].lower()
-                    if mac == "00:00:00:00:00:00" or ip.endswith(".1") or mac in seen_macs:
-                        continue
-                    seen_macs.add(mac)
-                    results.append({"ip": ip, "mac": mac})
-        except:
-            pass
 
     results.sort(key=lambda x: list(map(int, x['ip'].split('.'))))
     return results
