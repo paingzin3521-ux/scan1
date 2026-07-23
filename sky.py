@@ -167,7 +167,7 @@ def print_header(expiry=None):
         cprint(line, GREEN)
     print()
     cprint("[ Wifi scan bypass ]", YELLOW)
-    cprint("Telegram -> @paing_3521", GREEN)
+    cprint("Telegram -> @paingzin3521_ux", GREEN)
     print(_sep())
     print(f"{DG}[*] Device ID : {CYAN}{DEVICE_ID}{RESET}")
     if expiry:
@@ -193,7 +193,7 @@ def key_screen() -> float:
         print()
         cprint("[ Wifi scan bypass ]", YELLOW)
         print()
-        cprint("Telegram -> @paing_3521", GREEN)
+        cprint("Telegram -> @paingzin3521_ux", GREEN)
         print(_sep())
         print(f"{DG}[*] Device ID : {CYAN}{DEVICE_ID}{RESET}")
         print(f"{DG}[*] Expiry    : {RED}Not Registered{RESET}")
@@ -546,46 +546,74 @@ def adb_connect_step():
 
 def scan_network_via_adb():
     """Scan LAN using ADB and return list of {ip, mac} dicts."""
-    # Get subnet
-    try:
-        output = subprocess.check_output(["adb", "shell", "ip", "route"],
-                                         stderr=subprocess.DEVNULL).decode()
-        m = re.search(r'src\s+(\d{1,3}\.\d{1,3}\.\d{1,3})', output)
-        subnet = m.group(1) if m else "192.168.1"
-    except:
-        subnet = "192.168.1"
+    global GATEWAY_IP
+    # Get subnet from GATEWAY_IP first, then from ip route
+    subnet = None
+    if GATEWAY_IP:
+        subnet = ".".join(GATEWAY_IP.split(".")[:3])
+    
+    if not subnet:
+        try:
+            output = subprocess.check_output(["adb", "shell", "ip", "route"],
+                                             stderr=subprocess.DEVNULL).decode()
+            m = re.search(r'src\s+(\d{1,3}\.\d{1,3}\.\d{1,3})', output)
+            if m:
+                subnet = m.group(1)
+            else:
+                # Fallback: find any IP and take its subnet
+                m2 = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}', output)
+                subnet = m2.group(1) if m2 else "192.168.1"
+        except:
+            subnet = "192.168.1"
 
-    print(f"{YELLOW}[*] Scanning network (IP/MAC)...{RESET}")
+    print(f"{YELLOW}[*] Scanning network ({subnet}.0/24)...{RESET}")
 
     # Ping sweep to populate ARP table
     ips = [f"{subnet}.{i}" for i in range(1, 255)]
-    with ThreadPoolExecutor(max_workers=80) as ex:
+    with ThreadPoolExecutor(max_workers=100) as ex:
         list(ex.map(
             lambda ip: subprocess.run(["adb", "shell", f"ping -c 1 -w 1 {ip}"],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
             ips
         ))
 
-    # Read ARP table
+    # Read ARP table from multiple sources
     results = []
+    seen_macs = set()
+    
+    # Method 1: ip neigh show
     try:
         output = subprocess.check_output(["adb", "shell", "ip", "neigh", "show"],
                                          stderr=subprocess.DEVNULL).decode()
-        seen_macs = set()
         for line in output.splitlines():
             ip_m = re.search(r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
             mac_m = re.search(r'lladdr\s+([0-9a-fA-F:]{17})', line)
             if ip_m and mac_m:
                 ip = ip_m.group(1)
                 mac = mac_m.group(1).lower()
-                if ip.endswith(".1") or ip.endswith(".255"):
-                    continue
-                if mac in seen_macs:
+                if ip.endswith(".1") or ip.endswith(".255") or mac in seen_macs:
                     continue
                 seen_macs.add(mac)
                 results.append({"ip": ip, "mac": mac})
     except:
         pass
+
+    # Method 2: /proc/net/arp (Fallback for older devices or different permissions)
+    if not results:
+        try:
+            output = subprocess.check_output(["adb", "shell", "cat", "/proc/net/arp"],
+                                             stderr=subprocess.DEVNULL).decode()
+            for line in output.splitlines()[1:]: # Skip header
+                parts = line.split()
+                if len(parts) >= 4:
+                    ip = parts[0]
+                    mac = parts[3].lower()
+                    if mac == "00:00:00:00:00:00" or ip.endswith(".1") or mac in seen_macs:
+                        continue
+                    seen_macs.add(mac)
+                    results.append({"ip": ip, "mac": mac})
+        except:
+            pass
 
     results.sort(key=lambda x: list(map(int, x['ip'].split('.'))))
     return results
@@ -1176,7 +1204,7 @@ def main():
         cprint(line, GREEN)
     print()
     cprint("[ Wifi scan bypass ]", YELLOW)
-    cprint("Telegram -> @paing_3521", GREEN)
+    cprint("Telegram -> @paingzin3521_ux", GREEN)
     print(_sep())
     print(f"{DG}[*] Device ID : {CYAN}{DEVICE_ID}{RESET}")
     print(f"{DG}[*] Expiry    : {GREEN}{fmt_expiry(expiry)}{RESET}")
