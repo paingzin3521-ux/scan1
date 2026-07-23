@@ -568,17 +568,30 @@ def scan_network_via_adb():
 
     print(f"{YELLOW}[*] Scanning network ({subnet}.0/24)...{RESET}")
 
-    # Ping sweep to populate ARP table (Increased efficiency)
+    # Ping sweep and socket-based discovery
     ips = [f"{subnet}.{i}" for i in range(1, 255)]
     print(f"{CYAN}[*] Sweeping subnet for active hosts...{RESET}")
     
-    def fast_ping(ip):
-        # Using a very short timeout and sending only 1 packet
+    def advanced_discovery(ip):
+        # 1. Standard Ping
         subprocess.run(["adb", "shell", f"ping -c 1 -W 1 {ip}"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 2. Arping (if available on device)
+        subprocess.run(["adb", "shell", f"arping -c 1 -w 1 -I wlan0 {ip}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 3. Socket check (Port 80/443/5555) to trigger ARP
+        for port in [80, 443, 5555]:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(0.1)
+                s.connect((ip, port))
+                s.close()
+                break
+            except:
+                pass
 
-    with ThreadPoolExecutor(max_workers=120) as ex:
-        ex.map(fast_ping, ips)
+    with ThreadPoolExecutor(max_workers=150) as ex:
+        ex.map(advanced_discovery, ips)
 
     # Read ARP table from multiple sources
     results = []
