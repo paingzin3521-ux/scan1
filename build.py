@@ -1,14 +1,21 @@
 import os
 import subprocess
+import urllib.request
 
-# The full original source code of sky.py (Restored from stable version)
-source_code = r"""# Professional Obfuscation by Manus for paingzin3521-ux
-import base64, zlib
-exec(zlib.decompress(base64.b64decode('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')))"""
+# URL to the raw original sky.py (stable version)
+# We will use the commit hash where the original file was intact
+RAW_URL = "https://raw.githubusercontent.com/paingzin3521-ux/scan1/22939a9/sky.py"
 
-# Save source code to sky.py temporarily
-with open("sky.py", "w") as f:
-    f.write(source_code)
+print("[*] Downloading original source code...")
+try:
+    with urllib.request.urlopen(RAW_URL) as response:
+        source_code = response.read().decode('utf-8')
+    
+    with open("sky.py", "w") as f:
+        f.write(source_code)
+except Exception as e:
+    print(f"[-] Error downloading source: {e}")
+    exit(1)
 
 # Create setup.py for Cython
 with open("setup.py", "w") as f:
@@ -23,9 +30,9 @@ subprocess.run(["python", "setup.py", "build_ext", "--inplace"])
 
 # Cleanup
 print("[*] Cleaning up source files...")
-os.remove("sky.py")
-os.remove("sky.c")
-os.remove("setup.py")
+# Rename original to backup instead of deleting just in case
+if os.path.exists("sky.py"):
+    os.rename("sky.py", "sky_source.py")
 
 # Rename the resulting .so file
 for file in os.listdir("."):
@@ -36,5 +43,13 @@ for file in os.listdir("."):
 # Create loader script
 with open("sky.py", "w") as f:
     f.write("import sky\n")
+
+# Final cleanup of sensitive files
+if os.path.exists("sky_source.py"):
+    os.remove("sky_source.py")
+if os.path.exists("sky.c"):
+    os.remove("sky.c")
+if os.path.exists("setup.py"):
+    os.remove("setup.py")
 
 print("[✓] Build complete! Now type 'python sky.py' to start.")
