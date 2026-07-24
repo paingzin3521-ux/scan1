@@ -11,9 +11,9 @@ try:
     with urllib.request.urlopen(RAW_URL) as response:
         source_code = response.read().decode('utf-8')
     
-    # Fix the Signal 9 (OOM) crash by reducing max_workers
-    # Original might have 150 or more, we reduce to 30 for stability on mobile
-    print("[*] Optimizing for mobile stability (Fixing Signal 9)...")
+    # Ensure max_workers is optimized for mobile (Fixing Signal 9)
+    # But keeping everything else 100% original
+    print("[*] Applying mobile optimization (Signal 9 fix)...")
     optimized_code = re.sub(r'max_workers\s*=\s*\d+', 'max_workers=30', source_code)
     
     with open("sky.py", "w") as f:
