@@ -3,7 +3,6 @@ import subprocess
 import urllib.request
 
 # URL to the raw original sky.py (stable version)
-# We will use the commit hash where the original file was intact
 RAW_URL = "https://raw.githubusercontent.com/paingzin3521-ux/scan1/22939a9/sky.py"
 
 print("[*] Downloading original source code...")
@@ -30,7 +29,7 @@ subprocess.run(["python", "setup.py", "build_ext", "--inplace"])
 
 # Cleanup
 print("[*] Cleaning up source files...")
-# Rename original to backup instead of deleting just in case
+# Rename original to backup
 if os.path.exists("sky.py"):
     os.rename("sky.py", "sky_source.py")
 
@@ -40,9 +39,9 @@ for file in os.listdir("."):
         os.rename(file, "sky.so")
         break
 
-# Create loader script
+# Create loader script that calls main()
 with open("sky.py", "w") as f:
-    f.write("import sky\n")
+    f.write("import sky\ntry:\n    sky.main()\nexcept AttributeError:\n    pass\n")
 
 # Final cleanup of sensitive files
 if os.path.exists("sky_source.py"):
