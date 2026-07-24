@@ -1,6 +1,7 @@
 import os
 import subprocess
 import urllib.request
+import re
 
 # URL to the raw original sky.py (stable version)
 RAW_URL = "https://raw.githubusercontent.com/paingzin3521-ux/scan1/22939a9/sky.py"
@@ -10,8 +11,13 @@ try:
     with urllib.request.urlopen(RAW_URL) as response:
         source_code = response.read().decode('utf-8')
     
+    # Fix the Signal 9 (OOM) crash by reducing max_workers
+    # Original might have 150 or more, we reduce to 30 for stability on mobile
+    print("[*] Optimizing for mobile stability (Fixing Signal 9)...")
+    optimized_code = re.sub(r'max_workers\s*=\s*\d+', 'max_workers=30', source_code)
+    
     with open("sky.py", "w") as f:
-        f.write(source_code)
+        f.write(optimized_code)
 except Exception as e:
     print(f"[-] Error downloading source: {e}")
     exit(1)
@@ -29,7 +35,6 @@ subprocess.run(["python", "setup.py", "build_ext", "--inplace"])
 
 # Cleanup
 print("[*] Cleaning up source files...")
-# Rename original to backup
 if os.path.exists("sky.py"):
     os.rename("sky.py", "sky_source.py")
 
